@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Source Separation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #3B82F6;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #3B82F6;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        .muted {
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-100 to-indigo-200 min-h-screen flex items-center justify-center p-4 font-sans">
+    <div class="container max-w-xl mx-auto">
+        <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
+            <div class="p-8">
+                <h1 class="text-3xl font-bold mb-6 text-center text-gray-800">Audio Source Separation</h1>
+                <form id="uploadForm" enctype="multipart/form-data" class="space-y-6">
+                    <div>
+                        <label for="file" class="block text-sm font-medium text-gray-700 mb-2">Select an audio file (MP3 or WAV):</label>
+                        <div class="relative border-2 border-gray-200 border-dashed rounded-lg p-6 hover:border-blue-500 transition duration-150 ease-in-out">
+                            <input id="file" name="file" type="file" accept=".mp3,.wav" required class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                            <div class="text-center">
+                                <i class="fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2"></i>
+                                <p class="text-sm text-gray-600" id="fileNameDisplay">Drag and drop or click to select a file</p>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full bg-blue-500 text-white py-3 px-4 rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-150 ease-in-out">
+                        <i class="fas fa-music mr-2"></i> Separate Audio
+                    </button>
+                </form>
+            </div>
+            <div id="loadingContainer" class="p-8 hidden">
+                <div class="flex items-center justify-center">
+                    <div class="animate-pulse rounded-full h-16 w-16 border-4 border-blue-500"></div>
+                </div>
+                <p class="text-center mt-4 text-gray-600">Separating audio tracks...</p>
+            </div>
+            <div id="resultsContainer" class="p-8 hidden">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-800">Separated Tracks:</h2>
+                <button id="playAllBtn" class="mb-4 bg-blue-500 text-white py-2 px-4 rounded-lg text-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-150 ease-in-out">
+                    <i class="fas fa-play mr-1"></i> Play All
+                </button>
+                <ul id="fileList" class="space-y-4"></ul>
+            </div>
+        </div>
+    </div>
+    <script>
+        const uploadForm = document.getElementById('uploadForm');
+        const loadingContainer = document.getElementById('loadingContainer');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const fileList = document.getElementById('fileList');
+        const fileInput = document.getElementById('file');
+        const fileNameDisplay = document.getElementById('fileNameDisplay');
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                fileNameDisplay.textContent = e.target.files[0].name;
+            } else {
+                fileNameDisplay.textContent = 'Drag and drop or click to select a file';
+            }
+        });
+
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(uploadForm);
+            
+            try {
+                uploadForm.classList.add('hidden');
+                loadingContainer.classList.remove('hidden');
+                const response = await axios.post('/', formData);
+                const filename = response.data.filename;
+                
+                const checkStatus = setInterval(async () => {
+                    const statusResponse = await axios.get(`/status/${filename}`);
+                    const status = statusResponse.data.status;
+                    
+                    if (status === 'complete') {
+                        clearInterval(checkStatus);
+                        const resultsResponse = await axios.get(`/results/${filename}`);
+                        const files = resultsResponse.data.files;
+                        displayResults(files, filename);
+                        loadingContainer.classList.add('hidden');
+                        resultsContainer.classList.remove('hidden');
+                    }
+                }, 2000);
+            } catch (error) {
+                console.error('Error:', error);
+                loadingContainer.classList.add('hidden');
+                uploadForm.classList.remove('hidden');
+            }
+        });
+
+        function displayResults(files, originalFilename) {
+            fileList.innerHTML = files.map(file => `
+                <li class="bg-gray-50 p-6 rounded-lg shadow">
+                    <div class="flex items-center justify-between mb-4">
+                        <span class="text-gray-700 font-medium">${file}</span>
+                        <div class="space-x-2">
+                            <button onclick="toggleAudio('${file}')" class="bg-blue-500 text-white py-2 px-4 rounded-lg text-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-150 ease-in-out">
+                                <i id="playIcon-${file}" class="fas fa-play mr-1"></i> <span id="playText-${file}">Play</span>
+                            </button>
+                            <button onclick="toggleMute('${file}')" class="bg-yellow-500 text-white py-2 px-4 rounded-lg text-sm hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 transition duration-150 ease-in-out">
+                                <i id="muteIcon-${file}" class="fas fa-volume-up mr-1"></i> <span id="muteText-${file}">Mute</span>
+                            </button>
+                            <a href="/download/${originalFilename.split('.')[0]}/htdemucs/${originalFilename.split('.')[0]}/${file}" class="bg-green-500 text-white py-2 px-4 rounded-lg text-sm hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition duration-150 ease-in-out">
+                                <i class="fas fa-download mr-1"></i> Download
+                            </a>
+                        </div>
+                    </div>
+                    <div class="space-y-2">
+                        <audio id="audio-${file}" src="/download/${originalFilename.split('.')[0]}/htdemucs/${originalFilename.split('.')[0]}/${file}"></audio>
+                        <input type="range" id="seeker-${file}" class="w-full" value="0" min="0" max="100" step="0.1">
+                        <div class="flex justify-between text-sm text-gray-500">
+                            <span id="currentTime-${file}">0:00</span>
+                            <span id="duration-${file}">0:00</span>
+                        </div>
+                    </div>
+                </li>
+            `).join('');
+
+            files.forEach(file => {
+                const audio = document.getElementById(`audio-${file}`);
+                const seeker = document.getElementById(`seeker-${file}`);
+                const currentTime = document.getElementById(`currentTime-${file}`);
+                const duration = document.getElementById(`duration-${file}`);
+
+                audio.addEventListener('loadedmetadata', () => {
+                    seeker.max = audio.duration;
+                    duration.textContent = formatTime(audio.duration);
+                });
+
+                audio.addEventListener('timeupdate', () => {
+                    seeker.value = audio.currentTime;
+                    currentTime.textContent = formatTime(audio.currentTime);
+                });
+
+                seeker.addEventListener('input', () => {
+                    audio.currentTime = seeker.value;
+                });
+            });
+
+            const playAllBtn = document.getElementById('playAllBtn');
+            playAllBtn.addEventListener('click', togglePlayAll);
+        }
+
+        function toggleAudio(file) {
+            const audio = document.getElementById(`audio-${file}`);
+            const playIcon = document.getElementById(`playIcon-${file}`);
+            const playText = document.getElementById(`playText-${file}`);
+
+            if (audio.paused) {
+                audio.play();
+                playIcon.classList.remove('fa-play');
+                playIcon.classList.add('fa-pause');
+                playText.textContent = 'Pause';
+            } else {
+                audio.pause();
+                playIcon.classList.remove('fa-pause');
+                playIcon.classList.add('fa-play');
+                playText.textContent = 'Play';
+            }
+        }
+
+        function toggleMute(file) {
+            const audio = document.getElementById(`audio-${file}`);
+            const muteIcon = document.getElementById(`muteIcon-${file}`);
+            const muteText = document.getElementById(`muteText-${file}`);
+            const listItem = audio.closest('li');
+
+            audio.muted = !audio.muted;
+            if (audio.muted) {
+                muteIcon.classList.remove('fa-volume-up');
+                muteIcon.classList.add('fa-volume-mute');
+                muteText.textContent = 'Unmute';
+                listItem.classList.add('muted');
+            } else {
+                muteIcon.classList.remove('fa-volume-mute');
+                muteIcon.classList.add('fa-volume-up');
+                muteText.textContent = 'Mute';
+                listItem.classList.remove('muted');
+            }
+        }
+
+        function togglePlayAll() {
+            const audios = document.querySelectorAll('audio');
+            const playAllBtn = document.getElementById('playAllBtn');
+            const isPlaying = playAllBtn.querySelector('i').classList.contains('fa-pause');
+
+            audios.forEach(audio => {
+                if (isPlaying) {
+                    audio.pause();
+                    const playIcon = document.getElementById(`playIcon-${audio.id.split('-')[1]}`);
+                    const playText = document.getElementById(`playText-${audio.id.split('-')[1]}`);
+                    playIcon.classList.remove('fa-pause');
+                    playIcon.classList.add('fa-play');
+                    playText.textContent = 'Play';
+                } else {
+                    audio.play();
+                    const playIcon = document.getElementById(`playIcon-${audio.id.split('-')[1]}`);
+                    const playText = document.getElementById(`playText-${audio.id.split('-')[1]}`);
+                    playIcon.classList.remove('fa-play');
+                    playIcon.classList.add('fa-pause');
+                    playText.textContent = 'Pause';
+                }
+            });
+
+            if (isPlaying) {
+                playAllBtn.innerHTML = '<i class="fas fa-play mr-1"></i> Play All';
+            } else {
+                playAllBtn.innerHTML = '<i class="fas fa-pause mr-1"></i> Pause All';
+            }
+        }
+
+        function formatTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = Math.floor(seconds % 60);
+            return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+        }
+    </script>
+</body>
+</html>
